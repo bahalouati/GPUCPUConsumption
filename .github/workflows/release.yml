@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ qt6-base-dev libqt6sql6-sqlite
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: Package
+        run: |
+          mkdir -p powermeter-linux-x86_64
+          cp build/powermeter README.md powermeter-linux-x86_64/
+          tar czf powermeter-linux-x86_64.tar.gz powermeter-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: powermeter-linux-x86_64.tar.gz
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          arch: win64_msvc2019_64
+          cache: true
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory powermeter-windows-x64 | Out-Null
+          Copy-Item build/powermeter.exe, README.md powermeter-windows-x64/
+          windeployqt --release --no-translations powermeter-windows-x64/powermeter.exe
+          Compress-Archive powermeter-windows-x64/* powermeter-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: powermeter-windows-x64.zip
+
+  release:
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            Power Meter: a tray app that measures CPU, GPU and monitor power in watts, logs every session and shows daily energy on a calendar.
+
+            **Downloads**
+            - `powermeter-windows-x64.zip`: unzip and run `powermeter.exe`. GPU power is measured on NVIDIA cards; CPU power is an estimate from CPU load on Windows.
+            - `powermeter-linux-x86_64.tar.gz`: needs Qt 6 installed (`sudo apt install qt6-base-dev libqt6sql6-sqlite` on Debian/Ubuntu). See the README to allow reading the CPU energy counters.
+          files: |
+            powermeter-linux-x86_64.tar.gz
+            powermeter-windows-x64.zip
