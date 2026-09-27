@@ -4,6 +4,10 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to create, e.g. v1.0.0'
+        required: true
 
 permissions:
   contents: write
@@ -58,7 +62,7 @@ jobs:
 
   release:
     needs: [linux, windows]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
@@ -66,6 +70,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          name: Power Meter ${{ github.event.inputs.version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           body: |
             Power Meter: a tray app that measures CPU, GPU and monitor power in watts, logs every session and shows daily energy on a calendar.
